@@ -1,46 +1,33 @@
 #!/bin/bash
-# ===============================================================================
+# ================================================================================
 # File: validate.sh
-# ===============================================================================
+# ================================================================================
 # Purpose:
-#   Validate the Notes API by exercising all CRUD endpoints:
-#     - POST   /notes        (create notes)
-#     - GET    /notes        (list notes)
-#     - GET    /notes/{id}   (get note)
-#     - PUT    /notes/{id}   (update note)
-#     - DELETE /notes/{id}   (delete note)
+#   Validates the Notes API by exercising all CRUD endpoints:
+#     POST   /notes        (create 5 notes)
+#     GET    /notes        (list notes)
+#     GET    /notes/{id}   (get note)
+#     PUT    /notes/{id}   (update note)
+#     DELETE /notes/{id}   (delete note)
 #
 # Requirements:
-#   - aws CLI
-#   - curl
-#   - jq
+#   - oci CLI configured
+#   - curl, jq
+#   - 01-functions terraform state accessible (for output)
 #
 # Notes:
-#   - Assumes an HTTP API named "notes-api"
-#   - Owner is hardcoded to "global" in Lambda logic
-# ===============================================================================
+#   - Discovers the API Gateway endpoint from Terraform output.
+#   - Owner is hardcoded to "global" in function logic.
+# ================================================================================
 
 set -euo pipefail
-export AWS_DEFAULT_REGION="us-east-1"
 
 # ------------------------------------------------------------------------------
 # Step 1: Discover API Gateway endpoint
 # ------------------------------------------------------------------------------
 echo "NOTE: Locating API Gateway endpoint..."
 
-API_ID=$(aws apigatewayv2 get-apis \
-  --query "Items[?Name=='notes-api'].ApiId" \
-  --output text)
-
-if [[ -z "${API_ID}" || "${API_ID}" == "None" ]]; then
-  echo "ERROR: No API found with name 'notes-api'"
-  exit 1
-fi
-
-API_BASE=$(aws apigatewayv2 get-api \
-  --api-id "${API_ID}" \
-  --query "ApiEndpoint" \
-  --output text)
+API_BASE=$(cd 01-functions && terraform output -raw api_gateway_endpoint)
 
 echo "NOTE: API Gateway URL - ${API_BASE}"
 
@@ -54,7 +41,7 @@ NOTE_IDS=()
 for i in {1..5}; do
   PAYLOAD=$(jq -n \
     --arg title "Test Note ${i}" \
-    --arg note "This is test note ${i}" \
+    --arg note  "This is test note ${i}" \
     '{ title: $title, note: $note }')
 
   RESPONSE=$(curl -s -X POST "${API_BASE}/notes" \
@@ -99,6 +86,7 @@ for ID in "${NOTE_IDS[@]}"; do
 
   if [[ -z "${TITLE}" ]]; then
     echo "ERROR: Failed to fetch note ${ID}"
+    echo "RESPONSE: ${GET_RESPONSE}"
     exit 1
   fi
 
@@ -111,11 +99,8 @@ done
 echo "NOTE: Updating each note..."
 
 for ID in "${NOTE_IDS[@]}"; do
-  # Fetch existing note to preserve required fields
   CURRENT=$(curl -s "${API_BASE}/notes/${ID}")
-
   TITLE=$(echo "${CURRENT}" | jq -r '.title // empty')
-  NOTE=$(echo "${CURRENT}" | jq -r '.note // empty')
 
   if [[ -z "${TITLE}" ]]; then
     echo "ERROR: Failed to fetch existing note ${ID}"
@@ -152,9 +137,11 @@ for ID in "${NOTE_IDS[@]}"; do
   echo "NOTE: Deleted note ${ID}"
 done
 
-WEBAPP_URL=$(aws s3api list-buckets \
-  --query "Buckets[?starts_with(Name, 'notes')].Name" \
-  --output text 2>/dev/null | head -1 | xargs -I{} echo "https://{}.s3.amazonaws.com/index.html" || echo "N/A")
+# ------------------------------------------------------------------------------
+# Summary
+# ------------------------------------------------------------------------------
+
+WEBAPP_URL=$(cd 02-webapp && terraform output -raw website_url 2>/dev/null || echo "N/A")
 
 echo ""
 echo "================================================================================="

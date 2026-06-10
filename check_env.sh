@@ -1,40 +1,81 @@
 #!/bin/bash
+# ================================================================================
+# File: check_env.sh
+#
+# Purpose:
+#   Pre-flight validation.  Confirms all required tools and environment variables
+#   are present before any infrastructure is created or destroyed.
+#
+# Required tools:
+#   oci, terraform, docker, jq, envsubst
+#
+# Required environment variables:
+#   TF_VAR_tenancy_ocid     OCI tenancy OCID
+#   TF_VAR_compartment_id   OCI compartment OCID
+#   TF_VAR_region           OCI region (e.g., us-ashburn-1)
+#   TF_VAR_ocir_username    OCIR Docker login (namespace/user@email)
+#   TF_VAR_ocir_token       OCI auth token (create in Console: Identity → Auth Tokens)
+# ================================================================================
 
-echo "NOTE: Validating that required commands are found in your PATH."
-# List of required commands
-commands=("aws" "terraform" "jq")
+set -euo pipefail
 
-# Flag to track if all commands are found
-all_found=true
+all_ok=true
 
-# Iterate through each command and check if it's available
+# ------------------------------------------------------------------------------
+# Tool checks
+# ------------------------------------------------------------------------------
+
+echo "NOTE: Validating required commands..."
+
+commands=("oci" "terraform" "docker" "jq" "envsubst")
+
 for cmd in "${commands[@]}"; do
-  if ! command -v "$cmd" &> /dev/null; then
-    echo "ERROR: $cmd is not found in the current PATH."
-    all_found=false
+  if command -v "$cmd" &> /dev/null; then
+    echo "NOTE: ${cmd} found."
   else
-    echo "NOTE: $cmd is found in the current PATH."
+    echo "ERROR: ${cmd} is not in PATH."
+    all_ok=false
   fi
 done
 
-# Final status
-if [ "$all_found" = true ]; then
-  echo "NOTE: All required commands are available."
-else
-  echo "ERROR: One or more commands are missing."
+# ------------------------------------------------------------------------------
+# Environment variable checks
+# ------------------------------------------------------------------------------
+
+echo "NOTE: Validating required environment variables..."
+
+vars=(
+  "TF_VAR_tenancy_ocid"
+  "TF_VAR_compartment_id"
+  "TF_VAR_region"
+  "TF_VAR_ocir_username"
+  "TF_VAR_ocir_token"
+)
+
+for var in "${vars[@]}"; do
+  if [[ -n "${!var:-}" ]]; then
+    echo "NOTE: ${var} is set."
+  else
+    echo "ERROR: ${var} is not set."
+    all_ok=false
+  fi
+done
+
+if [[ "$all_ok" = false ]]; then
+  echo "ERROR: One or more checks failed. Aborting."
   exit 1
 fi
 
-echo "NOTE: Checking AWS cli connection."
+# ------------------------------------------------------------------------------
+# OCI CLI connectivity check
+# ------------------------------------------------------------------------------
 
-aws sts get-caller-identity --query "Account" --output text >> /dev/null
+echo "NOTE: Checking OCI CLI connection..."
 
-# Check the return code of the login command
-if [ $? -ne 0 ]; then
-  echo "ERROR: Failed to connect to AWS. Please check your credentials and environment variables."
-  exit 1
-else
-  echo "NOTE: Successfully logged into AWS."
-fi
+oci iam compartment get \
+  --compartment-id "${TF_VAR_compartment_id}" \
+  --query 'data.name' \
+  --raw-output > /dev/null
 
-
+echo "NOTE: OCI CLI connection verified."
+echo "NOTE: All environment checks passed."

@@ -1,12 +1,14 @@
-# AWS Serverless CRUD API with Lambda, DynamoDB, and API Gateway
+# OCI Serverless CRUD API with Functions, NoSQL, and API Gateway
 
 This project delivers a fully automated **serverless CRUD (Create, Read, Update,
-Delete) API** on AWS, built using **Amazon API Gateway**, **AWS Lambda**, and
-**Amazon DynamoDB**.
+Delete) API** on OCI, built using **OCI API Gateway**, **OCI Functions**, and
+**OCI NoSQL Database**.
 
-It uses **Terraform** and **Python (boto3)** to provision and deploy a
+It uses **Terraform** and **Python (oci SDK + fdk)** to provision and deploy a
 **stateless, REST-style backend** that exposes HTTP endpoints for managing simple
-“notes” data — all without running or managing any EC2 instances.
+“notes” data — all without running or managing any compute instances.
+
+This is the OCI port of **aws-crud-example**.
 
 For testing and demonstration purposes, a lightweight **HTML web frontend**
 interacts directly with the deployed API, allowing users to create, view, update,

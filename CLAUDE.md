@@ -1,20 +1,24 @@
-# CLAUDE.md — aws-crud-example
+# CLAUDE.md — oci-crud-example
 
-A serverless notes CRUD API on AWS. Five Lambda functions handle one REST operation each, DynamoDB stores the data, API Gateway (HTTP API v2) routes requests, and a static S3 site provides a browser UI. This is the AWS reference implementation; GCP and Azure ports exist as parallel projects.
+A serverless notes CRUD API on OCI. Five Functions handle one REST operation each,
+OCI NoSQL Database stores the data, API Gateway routes requests, and a static Object
+Storage site provides a browser UI. This is the OCI port of aws-crud-example.
 
 ---
 
 ## What This Project Does
 
-Clients hit an API Gateway HTTP API that routes each operation to a dedicated Lambda function. DynamoDB persists the notes. A static HTML frontend served from S3 makes API calls directly to the API Gateway endpoint.
+Clients hit an OCI API Gateway that routes each operation to a dedicated OCI Function.
+OCI NoSQL Database persists the notes. A static HTML frontend served from Object Storage
+makes API calls directly to the API Gateway endpoint.
 
 **Base URL after deploy:**
 ```
-https://{api-id}.execute-api.us-east-1.amazonaws.com
+https://{gateway-hostname}/
 ```
 
-| Method | Path | Lambda | Operation |
-|--------|------|--------|-----------|
+| Method | Path | Function | Operation |
+|--------|------|----------|-----------|
 | POST | `/notes` | create-note | Create note |
 | GET | `/notes` | list-notes | List all notes |
 | GET | `/notes/{id}` | get-note | Get single note |
@@ -29,49 +33,55 @@ https://{api-id}.execute-api.us-east-1.amazonaws.com
 Browser / curl
      │
      ▼
-API Gateway (HTTP API v2) — notes-api
+OCI API Gateway — notes-gateway (PUBLIC)
      │  routes by method + path
-     ├── POST   /notes        → Lambda: create-note  (create.py)
-     ├── GET    /notes        → Lambda: list-notes   (list.py)
-     ├── GET    /notes/{id}   → Lambda: get-note     (get.py)
-     ├── PUT    /notes/{id}   → Lambda: update-note  (update.py)
-     └── DELETE /notes/{id}  → Lambda: delete-note  (delete.py)
-                │
+     ├── POST   /notes        → Function: create-note
+     ├── GET    /notes        → Function: list-notes
+     ├── GET    /notes/{id}   → Function: get-note     ← injects X-Note-Id header
+     ├── PUT    /notes/{id}   → Function: update-note  ← injects X-Note-Id header
+     └── DELETE /notes/{id}  → Function: delete-note  ← injects X-Note-Id header
+                │ (Resource Principal auth)
                 ▼
-          DynamoDB table: notes
-          PK: owner (string)
-          SK: id    (string, UUID)
+          OCI NoSQL Table: notes
+          Shard key: owner (string, always "global")
+          Sort key:  id    (string, UUID4)
 ```
 
-**Why five functions instead of one:** The AWS pattern uses one Lambda per route with API Gateway handling routing. This is the idiomatic AWS approach; contrast with the GCP port which uses a single Cloud Function with internal routing (no API Gateway needed).
+**One image, five functions:** All five OCI Functions share a single Docker image
+in OCIR.  A `FUNCTION_TYPE` environment variable (set per-function in Terraform)
+routes the FDK `handler()` entry point to the correct CRUD operation at runtime.
+
+**Path parameters:** OCI API Gateway does not automatically forward URL path
+parameters to function bodies.  For routes with `{id}`, the deployment spec
+injects `${request.path[id]}` as the `X-Note-Id` request header before invoking
+the function.  The function reads it from `ctx.Headers().get("x-note-id")`.
 
 ---
 
 ## Repository Layout
 
 ```
-01-lambdas/
+01-functions/
   code/
-    create.py         Lambda: create a note
-    list.py           Lambda: list all notes
-    get.py            Lambda: get a note by ID
-    update.py         Lambda: update a note
-    delete.py         Lambda: delete a note
-  main.tf             Terraform: AWS provider, data sources
-  dynamodb.tf         Terraform: DynamoDB table (owner PK, id SK)
-  api.tf              Terraform: API Gateway HTTP API, routes, integrations, stages
-  lambda-post.tf      Terraform: IAM role + Lambda for create
-  lambda-list.tf      Terraform: IAM role + Lambda for list
-  lambda-get.tf       Terraform: IAM role + Lambda for get
-  lambda-update.tf    Terraform: IAM role + Lambda for update
-  lambda-delete.tf    Terraform: IAM role + Lambda for delete
+    func.py           All five CRUD handlers; dispatches via FUNCTION_TYPE env var
+    requirements.txt  fdk + oci Python packages
+    Dockerfile        fnproject/python:3.11 multi-stage build
+  main.tf             OCI provider, variables
+  network.tf          VCN, public subnet, internet gateway, security list
+  nosql.tf            OCI NoSQL table (owner shard key + id sort key)
+  registry.tf         OCIR repo; null_resource builds and pushes Docker image
+  functions.tf        Functions Application + 5 Function resources
+  api.tf              API Gateway + deployment (routes, CORS, header transforms)
+  iam.tf              Dynamic Group + policies for Functions→NoSQL and API GW→Functions
+  outputs.tf          api_gateway_endpoint, ocir_image_path
 02-webapp/
   index.html.tmpl     Web UI template — API_BASE injected at deploy time
-  main.tf             Terraform: AWS provider
-  s3.tf               Terraform: public S3 static site
-check_env.sh          Pre-flight: verify aws/terraform/jq, test AWS credentials
+  favicon.ico
+  main.tf             OCI provider, variables
+  storage.tf          Object Storage bucket (public) + object uploads
+check_env.sh          Pre-flight: verify tools, env vars, OCI CLI connection
 apply.sh              Full deployment (both phases + validation)
-destroy.sh            Teardown in reverse order
+destroy.sh            Teardown in reverse order; purges OCIR images first
 validate.sh           End-to-end CRUD smoke test via curl
 ```
 
@@ -79,9 +89,22 @@ validate.sh           End-to-end CRUD smoke test via curl
 
 ## Prerequisites
 
-- `aws`, `terraform`, `jq` in PATH
-- AWS credentials configured (environment variables or `~/.aws/credentials`)
-- Sufficient IAM permissions: Lambda, DynamoDB, API Gateway, S3, IAM
+- `oci`, `terraform`, `docker`, `jq`, `envsubst` in PATH
+- OCI CLI configured (`~/.oci/config` with API key)
+- Docker daemon running (for local image build)
+- OCI Auth Token created in Console (Identity → Users → Auth Tokens)
+
+---
+
+## Required Environment Variables
+
+```bash
+export TF_VAR_tenancy_ocid="ocid1.tenancy.oc1....."
+export TF_VAR_compartment_id="ocid1.compartment.oc1....."
+export TF_VAR_region="us-ashburn-1"
+export TF_VAR_ocir_username="mynamespace/user@example.com"
+export TF_VAR_ocir_token="your-oci-auth-token"
+```
 
 ---
 
@@ -99,54 +122,66 @@ validate.sh           End-to-end CRUD smoke test via curl
 ```
 
 `apply.sh` runs in two phases:
-1. **`check_env.sh`** → validates tools and AWS credentials
-2. **`01-lambdas`** → deploys DynamoDB, all five Lambdas, API Gateway, IAM roles
-3. Looks up API Gateway endpoint via `aws apigatewayv2 get-apis`, injects into `index.html.tmpl` via `envsubst`
-4. **`02-webapp`** → deploys public S3 bucket, uploads generated `index.html`
+1. **`check_env.sh`** → validates tools, env vars, OCI CLI credentials
+2. **`01-functions`** → `terraform apply` creates VCN, NoSQL, OCIR repo, builds + pushes
+   Docker image (via `null_resource`), creates Functions Application + 5 Functions,
+   creates API Gateway + deployment, creates Dynamic Group + IAM policies
+3. Reads `api_gateway_endpoint` from Terraform output, injects into `index.html.tmpl`
+   via `envsubst`
+4. **`02-webapp`** → `terraform apply` creates public Object Storage bucket, uploads
+   `index.html` and `favicon.ico`
 5. **`validate.sh`** → creates, lists, gets, updates, and deletes 5 test notes
 
 ---
 
 ## Terraform Modules
 
-### 01-lambdas
-- `aws_dynamodb_table` `notes` — PAY_PER_REQUEST, PK=owner, SK=id
-- Five `aws_lambda_function` resources (Python 3.14, 15s timeout), one per operation
-- Five `aws_iam_role` resources with scoped DynamoDB policies (least-privilege per operation)
-- `aws_apigatewayv2_api` `notes-api` — HTTP API with CORS configured
-- Five `aws_apigatewayv2_integration` + `aws_apigatewayv2_route` pairs wiring routes to Lambdas
-- `aws_apigatewayv2_stage` `$default` with auto_deploy
-- Five `aws_lambda_permission` resources granting API Gateway invoke rights
+### 01-functions
+- `oci_core_vcn` + `oci_core_subnet` + `oci_core_internet_gateway` — public VCN for Functions and API Gateway
+- `oci_nosql_table` `notes` — composite PK: SHARD(owner) + id
+- `oci_artifacts_container_repository` `notes-functions` — OCIR private repo
+- `null_resource` `build_push` — `docker build + login + push` on code changes (content-hash tag)
+- `oci_functions_application` `notes-app` — groups all functions under shared VCN subnet
+- Five `oci_functions_function` resources — same image, different `FUNCTION_TYPE` config
+- `oci_apigateway_gateway` `notes-gateway` — PUBLIC endpoint
+- `oci_apigateway_deployment` `notes-api` — 5 routes, CORS, path-param header injection
+- `oci_identity_dynamic_group` + two `oci_identity_policy` resources for IAM
 
 ### 02-webapp
-- `aws_s3_bucket` with public-read static website hosting
-- `aws_s3_bucket_object` uploads `index.html` (generated from template)
+- `oci_objectstorage_bucket` with `access_type = "ObjectRead"` — public web hosting
+- `oci_objectstorage_object` uploads `index.html` (generated) and `favicon.ico`
 
 ---
 
-## Lambda Code
+## Function Code
 
-All five handlers follow the same pattern:
-- Read `NOTES_TABLE_NAME` from environment
-- Parse the API Gateway v2 payload format event
-- Interact with DynamoDB via `boto3.resource("dynamodb")`
-- Return `{"statusCode": N, "headers": {...}, "body": json.dumps(...)}`
+All five handlers are in `01-functions/code/func.py`.  A single `handler()` entry
+point dispatches based on `FUNCTION_TYPE`.  Each handler follows the same pattern:
 
-**DynamoDB data model:**
+- Read `FUNCTION_TYPE`, `NOSQL_TABLE_NAME`, `COMPARTMENT_ID` from environment
+- Use `oci.auth.signers.get_resource_principals_signer()` for auth (no secrets)
+- Instantiate `oci.nosql.NosqlClient` with the Resource Principal signer
+- For path-param routes: read note ID from `ctx.Headers().get("x-note-id")`
+- Perform OCI NoSQL operation (`put_row`, `get_row`, `delete_row`, `query`)
+- Return `fdk.response.Response` with JSON body
+
+**OCI NoSQL data model:**
 - Table: `notes`
-- PK: `owner` (always `"global"` — hardcoded, no auth)
-- SK: `id` (UUID4)
+- Shard key: `owner` (always `"global"` — hardcoded, no auth)
+- Sort key: `id` (UUID4)
 - Fields: `owner`, `id`, `title`, `note`, `created_at`, `updated_at`
+
+**OCI NoSQL key format for get_row / delete_row:**
+```python
+key = [f"owner:{OWNER}", f"id:{note_id}"]  # fieldname:value pairs
+```
 
 ---
 
 ## Test Manually
 
 ```bash
-BASE=$(aws apigatewayv2 get-apis \
-  --query "Items[?Name=='notes-api'].ApiId" --output text | \
-  xargs -I{} aws apigatewayv2 get-api --api-id {} \
-  --query ApiEndpoint --output text)
+BASE=$(cd 01-functions && terraform output -raw api_gateway_endpoint)
 
 # Create
 curl -X POST "$BASE/notes" -H "Content-Type: application/json" \
@@ -155,7 +190,7 @@ curl -X POST "$BASE/notes" -H "Content-Type: application/json" \
 # List
 curl "$BASE/notes"
 
-# Get / Update / Delete (replace ID)
+# Get / Update / Delete (replace {id})
 curl "$BASE/notes/{id}"
 curl -X PUT "$BASE/notes/{id}" -H "Content-Type: application/json" \
   -d '{"title":"Updated","note":"Body"}'
