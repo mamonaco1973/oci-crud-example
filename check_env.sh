@@ -3,79 +3,43 @@
 # File: check_env.sh
 #
 # Purpose:
-#   Pre-flight validation.  Confirms all required tools and environment variables
-#   are present before any infrastructure is created or destroyed.
+#   Pre-flight validation.  Confirms required tools are available and the
+#   OCI CLI is configured and reachable.
 #
-# Required tools:
-#   oci, terraform, docker, jq, envsubst
+# Required tools: oci, terraform, docker, jq, envsubst
 #
-# Required environment variables:
-#   TF_VAR_tenancy_ocid     OCI tenancy OCID
-#   TF_VAR_compartment_id   OCI compartment OCID
-#   TF_VAR_region           OCI region (e.g., us-ashburn-1)
-#   TF_VAR_ocir_username    OCIR Docker login (namespace/user@email)
-#   TF_VAR_ocir_token       OCI auth token (create in Console: Identity → Auth Tokens)
+# Optional env var:
+#   OCI_COMPARTMENT_ID  Defaults to tenancy OCID from ~/.oci/config when unset
 # ================================================================================
 
 set -euo pipefail
-
-all_ok=true
 
 # ------------------------------------------------------------------------------
 # Tool checks
 # ------------------------------------------------------------------------------
 
-echo "NOTE: Validating required commands..."
+echo "NOTE: Validating required commands in PATH."
 
 commands=("oci" "terraform" "docker" "jq" "envsubst")
 
 for cmd in "${commands[@]}"; do
-  if command -v "$cmd" &> /dev/null; then
-    echo "NOTE: ${cmd} found."
-  else
-    echo "ERROR: ${cmd} is not in PATH."
-    all_ok=false
+  if ! command -v "${cmd}" >/dev/null 2>&1; then
+    echo "ERROR: Required command not found: ${cmd}"
+    exit 1
   fi
+  echo "NOTE: Found required command: ${cmd}"
 done
 
-# ------------------------------------------------------------------------------
-# Environment variable checks
-# ------------------------------------------------------------------------------
-
-echo "NOTE: Validating required environment variables..."
-
-vars=(
-  "TF_VAR_tenancy_ocid"
-  "TF_VAR_compartment_id"
-  "TF_VAR_region"
-  "TF_VAR_ocir_username"
-  "TF_VAR_ocir_token"
-)
-
-for var in "${vars[@]}"; do
-  if [[ -n "${!var:-}" ]]; then
-    echo "NOTE: ${var} is set."
-  else
-    echo "ERROR: ${var} is not set."
-    all_ok=false
-  fi
-done
-
-if [[ "$all_ok" = false ]]; then
-  echo "ERROR: One or more checks failed. Aborting."
-  exit 1
-fi
+echo "NOTE: All required commands are available."
 
 # ------------------------------------------------------------------------------
 # OCI CLI connectivity check
 # ------------------------------------------------------------------------------
 
-echo "NOTE: Checking OCI CLI connection..."
+echo "NOTE: Checking OCI CLI connection."
+if ! oci os ns get > /dev/null 2>&1; then
+  echo "ERROR: Failed to connect to OCI. Check your ~/.oci/config."
+  exit 1
+fi
 
-oci iam compartment get \
-  --compartment-id "${TF_VAR_compartment_id}" \
-  --query 'data.name' \
-  --raw-output > /dev/null
-
-echo "NOTE: OCI CLI connection verified."
-echo "NOTE: All environment checks passed."
+echo "NOTE: OCI CLI authentication successful."

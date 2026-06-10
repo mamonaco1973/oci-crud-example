@@ -92,19 +92,28 @@ validate.sh           End-to-end CRUD smoke test via curl
 - `oci`, `terraform`, `docker`, `jq`, `envsubst` in PATH
 - OCI CLI configured (`~/.oci/config` with API key)
 - Docker daemon running (for local image build)
-- OCI Auth Token created in Console (Identity → Users → Auth Tokens)
+- OCI Auth Token created in Console: **Identity → Users → Auth Tokens**
 
 ---
 
-## Required Environment Variables
+## Setup
+
+No environment variables are required.  Everything is derived automatically.
+
+`apply.sh` reads `tenancy`, `region`, and `user` from `~/.oci/config`, fetches
+the Object Storage namespace via `oci os ns get`, and creates an OCIR auth token
+on the first run via `oci iam auth-token create`.  The token is cached at
+`~/.oci/ocir_token` (mode 600) and reused on all subsequent runs.
 
 ```bash
-export TF_VAR_tenancy_ocid="ocid1.tenancy.oc1....."
-export TF_VAR_compartment_id="ocid1.compartment.oc1....."
-export TF_VAR_region="us-ashburn-1"
-export TF_VAR_ocir_username="mynamespace/user@example.com"
-export TF_VAR_ocir_token="your-oci-auth-token"
+# Optional: target a specific compartment (defaults to tenancy root)
+export OCI_COMPARTMENT_ID="ocid1.compartment.oc1....."
 ```
+
+If the cached token is lost or invalidated, delete `~/.oci/ocir_token` and
+re-run `apply.sh`.  OCI allows a maximum of 2 auth tokens per user — if
+creation fails, delete an old token in the Console under
+**Identity → Users → Auth Tokens**.
 
 ---
 
