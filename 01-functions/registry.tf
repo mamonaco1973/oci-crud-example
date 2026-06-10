@@ -71,7 +71,7 @@ resource "null_resource" "build_push" {
 
     command = <<-EOT
       set -euo pipefail
-      echo "NOTE: Building Docker image ${IMAGE_PATH}..."
+      echo "NOTE: Building Docker image $IMAGE_PATH..."
       docker build -t "$IMAGE_PATH" ./code/
 
       echo "NOTE: Logging into OCIR..."
