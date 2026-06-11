@@ -26,7 +26,8 @@ resource "oci_identity_dynamic_group" "notes_functions" {
   name           = "notes-functions-dg"
   description    = "OCI Functions in the notes compartment (Resource Principal auth)"
 
-  matching_rule = "resource.type = 'fnfunc' AND resource.compartment.id = '${var.compartment_id}'"
+  # ALL{} syntax required for Identity Domain-enabled tenancies (IDCS backend).
+  matching_rule = "ALL {resource.type = 'fnfunc', resource.compartment.id = '${var.compartment_id}'}"
 }
 
 # --------------------------------------------------------------------------------
