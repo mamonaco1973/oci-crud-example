@@ -5,14 +5,10 @@
 # Purpose:
 #   Orchestrates end-to-end deployment of the Notes CRUD application on OCI.
 #
-#   Phase 1 (01-functions):
-#     - Builds the Docker image for all five OCI Functions
-#     - Pushes the image to OCI Container Registry (OCIR)
-#     - Creates: VCN, NoSQL table, Functions Application, API Gateway, IAM
-#
-#   Phase 2 (02-webapp):
-#     - Injects the API Gateway URL into the HTML template
-#     - Uploads the static web UI to OCI Object Storage
+#   Phase 1 (01-ocir):    Creates the OCIR container repository
+#   Phase 2 (02-docker):  Builds the Docker image and pushes it to OCIR
+#   Phase 3 (03-functions): Deploys Functions, NoSQL, VCN, IAM, API Gateway
+#   Phase 4 (04-webapp):  Injects API URL into HTML and deploys to Object Storage
 #
 # No environment variables are required.  Everything is derived automatically
 # from ~/.oci/config and the OCI CLI.  An OCIR auth token is created on the
@@ -83,46 +79,61 @@ else
   echo "NOTE: OCIR token created and saved to ${TOKEN_FILE}"
 fi
 
-# Export as Terraform variables.
+# Export Terraform variables shared across all phases.
 export TF_VAR_tenancy_ocid="$TENANCY_OCID"
 export TF_VAR_compartment_id="$OCI_COMPARTMENT_ID"
 export TF_VAR_region="$REGION"
-export TF_VAR_ocir_username="$OCIR_USERNAME"
-export TF_VAR_ocir_token="$OCIR_TOKEN"
+
+# Export OCIR vars for 02-docker/build.sh.
+export OCIR_HOST OCIR_TOKEN OCIR_USERNAME NAMESPACE
 
 # ------------------------------------------------------------------------------
-# Phase 1: Deploy Functions, NoSQL, and API Gateway
+# Phase 1: Create OCIR repository
 # ------------------------------------------------------------------------------
 
-echo "NOTE: Deploying Functions, NoSQL table, and API Gateway..."
+echo "NOTE: [Phase 1/4] Creating OCIR container repository..."
 
-cd 01-functions || {
-  echo "ERROR: 01-functions directory missing."
-  exit 1
-}
-
+cd 01-ocir || { echo "ERROR: 01-ocir directory missing."; exit 1; }
 terraform init
 terraform apply -auto-approve
+cd ..
 
+# ------------------------------------------------------------------------------
+# Phase 2: Build and push Docker image
+# ------------------------------------------------------------------------------
+
+echo "NOTE: [Phase 2/4] Building and pushing Docker image..."
+
+./02-docker/build.sh
+
+# Source the image path written by build.sh and pass it to Phase 3.
+# shellcheck source=/dev/null
+source 02-docker/.build_output
+export TF_VAR_image_path="${IMAGE_PATH}"
+
+# ------------------------------------------------------------------------------
+# Phase 3: Deploy Functions, NoSQL, and API Gateway
+# ------------------------------------------------------------------------------
+
+echo "NOTE: [Phase 3/4] Deploying Functions, NoSQL, and API Gateway..."
+
+cd 03-functions || { echo "ERROR: 03-functions directory missing."; exit 1; }
+terraform init
+terraform apply -auto-approve
 API_BASE=$(terraform output -raw api_gateway_endpoint)
-
 cd ..
 
 echo "NOTE: API Gateway endpoint - ${API_BASE}"
 
 # ------------------------------------------------------------------------------
-# Phase 2: Build and deploy the static web application
+# Phase 4: Build and deploy the static web application
 # ------------------------------------------------------------------------------
 
-echo "NOTE: Building static web application..."
+echo "NOTE: [Phase 4/4] Deploying static web application..."
 
-cd 02-webapp || {
-  echo "ERROR: 02-webapp directory missing."
-  exit 1
-}
+cd 04-webapp || { echo "ERROR: 04-webapp directory missing."; exit 1; }
 
 export API_BASE
-
 envsubst '${API_BASE}' < index.html.tmpl > index.html || {
   echo "ERROR: Failed to generate index.html"
   exit 1
@@ -130,7 +141,6 @@ envsubst '${API_BASE}' < index.html.tmpl > index.html || {
 
 terraform init
 terraform apply -auto-approve
-
 cd ..
 
 # ------------------------------------------------------------------------------

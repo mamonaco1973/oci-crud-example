@@ -27,7 +27,7 @@ set -euo pipefail
 # ------------------------------------------------------------------------------
 echo "NOTE: Locating API Gateway endpoint..."
 
-API_BASE=$(cd 01-functions && terraform output -raw api_gateway_endpoint)
+API_BASE=$(cd 03-functions && terraform output -raw api_gateway_endpoint)
 
 echo "NOTE: API Gateway URL - ${API_BASE}"
 
@@ -141,7 +141,7 @@ done
 # Summary
 # ------------------------------------------------------------------------------
 
-WEBAPP_URL=$(cd 02-webapp && terraform output -raw website_url 2>/dev/null || echo "N/A")
+WEBAPP_URL=$(cd 04-webapp && terraform output -raw website_url 2>/dev/null || echo "N/A")
 
 echo ""
 echo "================================================================================="

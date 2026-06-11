@@ -1,9 +1,8 @@
 # ================================================================================
-# OCI Provider and Variables
+# Phase 1: OCIR — OCI Container Registry Repository
 # ================================================================================
-# Configures the OCI Terraform provider and declares input variables consumed
-# by all Terraform files in this module.  Variables are supplied at apply time
-# via TF_VAR_* environment variables set in apply.sh / check_env.sh.
+# Creates the private container repository that holds the notes-functions image.
+# Must run before 02-docker so the repository exists before the image is pushed.
 # ================================================================================
 
 terraform {
@@ -11,14 +10,6 @@ terraform {
     oci = {
       source  = "oracle/oci"
       version = "~> 6.0"
-    }
-    null = {
-      source  = "hashicorp/null"
-      version = "~> 3.0"
-    }
-    random = {
-      source  = "hashicorp/random"
-      version = "~> 3.0"
     }
   }
 }
@@ -38,22 +29,11 @@ variable "tenancy_ocid" {
 }
 
 variable "compartment_id" {
-  description = "OCID of the compartment where all resources are created"
+  description = "OCID of the compartment where the repository is created"
   type        = string
 }
 
 variable "region" {
   description = "OCI region identifier (e.g., us-ashburn-1)"
   type        = string
-}
-
-variable "ocir_username" {
-  description = "OCIR Docker login username (format: tenancy-namespace/user@email)"
-  type        = string
-}
-
-variable "ocir_token" {
-  description = "OCI auth token used as the Docker password for OCIR login"
-  type        = string
-  sensitive   = true
 }

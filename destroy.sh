@@ -4,11 +4,14 @@
 #
 # Purpose:
 #   Tears down the Notes application stack deployed by apply.sh.
-#   Destroys resources in reverse order: web app first, then backend.
+#   Destroys resources in reverse phase order:
 #
-#   Note: The OCIR container repository cannot be deleted by Terraform while
-#   images exist in it.  This script purges all images from the repo before
-#   running terraform destroy to avoid a dependency error.
+#   Phase 4 (04-webapp):   Destroy Object Storage bucket and objects
+#   Phase 3 (03-functions): Destroy Functions, NoSQL, VCN, IAM, API Gateway
+#   Phase 1 (01-ocir):     Destroy OCIR repository (images must be purged first)
+#
+#   Phase 2 has no Terraform state — only a Docker image in OCIR which is
+#   deleted during the OCIR purge step before Phase 1 destroy.
 #
 # No environment variables required — all values derived from ~/.oci/config.
 # ================================================================================
@@ -27,43 +30,38 @@ if [ -z "${OCI_COMPARTMENT_ID:-}" ]; then
   OCI_COMPARTMENT_ID="$TENANCY_OCID"
 fi
 
-NAMESPACE=$(oci os ns get --query 'data' --raw-output)
-OCIR_USERNAME="${NAMESPACE}/${USER_OCID}"
-
-# Read cached OCIR token — needed by Terraform variables even during destroy.
-TOKEN_FILE="${HOME}/.oci/ocir_token"
-OCIR_TOKEN=""
-if [ -f "${TOKEN_FILE}" ]; then
-  OCIR_TOKEN=$(cat "${TOKEN_FILE}")
-fi
-
 export TF_VAR_tenancy_ocid="$TENANCY_OCID"
 export TF_VAR_compartment_id="$OCI_COMPARTMENT_ID"
 export TF_VAR_region="$REGION"
-export TF_VAR_ocir_username="$OCIR_USERNAME"
-export TF_VAR_ocir_token="${OCIR_TOKEN:-dummy}"
 
 # ------------------------------------------------------------------------------
-# Destroy static web application
+# Phase 4: Destroy static web application
 # ------------------------------------------------------------------------------
 
-echo "NOTE: Destroying web application..."
+echo "NOTE: [Phase 4/4] Destroying web application..."
 
-cd 02-webapp || {
-  echo "ERROR: 02-webapp directory missing."
-  exit 1
-}
-
+cd 04-webapp || { echo "ERROR: 04-webapp directory missing."; exit 1; }
 terraform init
 terraform destroy -auto-approve
-
 cd ..
 
 # ------------------------------------------------------------------------------
-# Purge OCIR images before backend destroy
+# Phase 3: Destroy Functions, NoSQL, and API Gateway
+# ------------------------------------------------------------------------------
+
+echo "NOTE: [Phase 3/4] Destroying Functions, NoSQL, and API Gateway..."
+
+cd 03-functions || { echo "ERROR: 03-functions directory missing."; exit 1; }
+terraform init
+terraform destroy -auto-approve
+cd ..
+
+# ------------------------------------------------------------------------------
+# Purge OCIR images before Phase 1 destroy
 # ------------------------------------------------------------------------------
 # Terraform cannot delete an OCIR repository while it still contains images.
-# Enumerate all images in the compartment and delete any from notes-functions.
+# Enumerate all images in the compartment and delete them before destroying
+# the repository in Phase 1.
 # ------------------------------------------------------------------------------
 
 echo "NOTE: Purging OCIR images from notes-functions repository..."
@@ -87,19 +85,14 @@ else
 fi
 
 # ------------------------------------------------------------------------------
-# Destroy Functions, NoSQL, and API Gateway
+# Phase 1: Destroy OCIR repository
 # ------------------------------------------------------------------------------
 
-echo "NOTE: Destroying Functions, NoSQL, and API Gateway..."
+echo "NOTE: [Phase 1/4] Destroying OCIR repository..."
 
-cd 01-functions || {
-  echo "ERROR: 01-functions directory missing."
-  exit 1
-}
-
+cd 01-ocir || { echo "ERROR: 01-ocir directory missing."; exit 1; }
 terraform init
 terraform destroy -auto-approve
-
 cd ..
 
 echo "NOTE: Infrastructure teardown complete."
@@ -113,6 +106,8 @@ echo "NOTE: Infrastructure teardown complete."
 # ------------------------------------------------------------------------------
 
 echo "NOTE: Deleting OCIR auth token..."
+
+TOKEN_FILE="${HOME}/.oci/ocir_token"
 
 TOKEN_ID=$(oci iam auth-token list \
   --user-id "${USER_OCID}" \

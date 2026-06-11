@@ -3,8 +3,11 @@
 # ================================================================================
 # Deploys a Functions Application (logical container for functions) and five
 # individual Function resources — one per CRUD operation.  All five use the
-# same Docker image (local.image_path) distinguished by the FUNCTION_TYPE
+# same Docker image (var.image_path) distinguished by the FUNCTION_TYPE
 # environment variable, which the handler() dispatcher reads at runtime.
+#
+# The image is built and pushed by apply.sh before terraform apply runs.
+# var.image_path is set via TF_VAR_image_path in the environment.
 # ================================================================================
 
 # --------------------------------------------------------------------------------
@@ -32,12 +35,10 @@ locals {
 resource "oci_functions_function" "create_note" {
   application_id     = oci_functions_application.notes.id
   display_name       = "create-note"
-  image              = local.image_path
+  image              = var.image_path
   memory_in_mbs      = "256"
   timeout_in_seconds = 30
   config             = merge(local.fn_config, { FUNCTION_TYPE = "create" })
-
-  depends_on = [null_resource.build_push]
 }
 
 # --------------------------------------------------------------------------------
@@ -46,12 +47,10 @@ resource "oci_functions_function" "create_note" {
 resource "oci_functions_function" "list_notes" {
   application_id     = oci_functions_application.notes.id
   display_name       = "list-notes"
-  image              = local.image_path
+  image              = var.image_path
   memory_in_mbs      = "256"
   timeout_in_seconds = 30
   config             = merge(local.fn_config, { FUNCTION_TYPE = "list" })
-
-  depends_on = [null_resource.build_push]
 }
 
 # --------------------------------------------------------------------------------
@@ -60,12 +59,10 @@ resource "oci_functions_function" "list_notes" {
 resource "oci_functions_function" "get_note" {
   application_id     = oci_functions_application.notes.id
   display_name       = "get-note"
-  image              = local.image_path
+  image              = var.image_path
   memory_in_mbs      = "256"
   timeout_in_seconds = 30
   config             = merge(local.fn_config, { FUNCTION_TYPE = "get" })
-
-  depends_on = [null_resource.build_push]
 }
 
 # --------------------------------------------------------------------------------
@@ -74,12 +71,10 @@ resource "oci_functions_function" "get_note" {
 resource "oci_functions_function" "update_note" {
   application_id     = oci_functions_application.notes.id
   display_name       = "update-note"
-  image              = local.image_path
+  image              = var.image_path
   memory_in_mbs      = "256"
   timeout_in_seconds = 30
   config             = merge(local.fn_config, { FUNCTION_TYPE = "update" })
-
-  depends_on = [null_resource.build_push]
 }
 
 # --------------------------------------------------------------------------------
@@ -88,10 +83,8 @@ resource "oci_functions_function" "update_note" {
 resource "oci_functions_function" "delete_note" {
   application_id     = oci_functions_application.notes.id
   display_name       = "delete-note"
-  image              = local.image_path
+  image              = var.image_path
   memory_in_mbs      = "256"
   timeout_in_seconds = 30
   config             = merge(local.fn_config, { FUNCTION_TYPE = "delete" })
-
-  depends_on = [null_resource.build_push]
 }

@@ -1,7 +1,7 @@
 # ================================================================================
-# OCI Provider Configuration — Web Application Phase
+# Phase 4: Web Application — OCI Object Storage Static Hosting
 # ================================================================================
-# Deploys the static web client to OCI Object Storage.  Run after 01-functions
+# Deploys the static web client to OCI Object Storage.  Run after 03-functions
 # so the API Gateway endpoint is known and injected into index.html.
 # ================================================================================
 
