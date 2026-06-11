@@ -37,7 +37,7 @@ resource "oci_functions_function" "create_note" {
   display_name       = "create-note"
   image              = var.image_path
   memory_in_mbs      = "256"
-  timeout_in_seconds = 30
+  timeout_in_seconds = 120
   config             = merge(local.fn_config, { FUNCTION_TYPE = "create" })
 }
 
@@ -49,7 +49,7 @@ resource "oci_functions_function" "list_notes" {
   display_name       = "list-notes"
   image              = var.image_path
   memory_in_mbs      = "256"
-  timeout_in_seconds = 30
+  timeout_in_seconds = 120
   config             = merge(local.fn_config, { FUNCTION_TYPE = "list" })
 }
 
@@ -61,7 +61,7 @@ resource "oci_functions_function" "get_note" {
   display_name       = "get-note"
   image              = var.image_path
   memory_in_mbs      = "256"
-  timeout_in_seconds = 30
+  timeout_in_seconds = 120
   config             = merge(local.fn_config, { FUNCTION_TYPE = "get" })
 }
 
@@ -73,7 +73,7 @@ resource "oci_functions_function" "update_note" {
   display_name       = "update-note"
   image              = var.image_path
   memory_in_mbs      = "256"
-  timeout_in_seconds = 30
+  timeout_in_seconds = 120
   config             = merge(local.fn_config, { FUNCTION_TYPE = "update" })
 }
 
@@ -85,6 +85,6 @@ resource "oci_functions_function" "delete_note" {
   display_name       = "delete-note"
   image              = var.image_path
   memory_in_mbs      = "256"
-  timeout_in_seconds = 30
+  timeout_in_seconds = 120
   config             = merge(local.fn_config, { FUNCTION_TYPE = "delete" })
 }
