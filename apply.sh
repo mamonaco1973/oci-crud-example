@@ -53,6 +53,7 @@ OCIR_HOST="${REGION}.ocir.io"
 echo "NOTE: Region      - ${REGION}"
 echo "NOTE: Namespace   - ${NAMESPACE}"
 echo "NOTE: Compartment - ${OCI_COMPARTMENT_ID}"
+echo "NOTE: OCIR user   - ${OCIR_USERNAME}"
 
 # ------------------------------------------------------------------------------
 # OCIR auth token — created once, cached in ~/.oci/ocir_token
