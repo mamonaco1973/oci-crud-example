@@ -41,8 +41,8 @@ export TF_VAR_region="$REGION"
 echo "NOTE: [Phase 4/4] Destroying web application..."
 
 cd 04-webapp || { echo "ERROR: 04-webapp directory missing."; exit 1; }
-terraform init
-terraform destroy -auto-approve
+#terraform init
+#terraform destroy -auto-approve
 cd ..
 
 # ------------------------------------------------------------------------------
