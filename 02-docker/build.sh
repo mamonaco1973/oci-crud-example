@@ -37,10 +37,22 @@ echo "NOTE: Building Docker image (tag=${IMAGE_TAG})..."
 docker build -t "${IMAGE_PATH}" "${CODE_DIR}"
 
 echo "NOTE: Logging in to OCIR at ${OCIR_HOST}..."
-# --password-stdin is unreliable in non-interactive pipe contexts on some hosts.
-docker login "${OCIR_HOST}" \
-  --username "${OCIR_USERNAME}" \
-  --password "${OCIR_TOKEN}"
+# Retry with exponential backoff — newly created OCI auth tokens need time
+# to propagate through IAM before OCIR will accept them (10s, 20s, 40s).
+for attempt in 1 2 3; do
+  if docker login "${OCIR_HOST}" \
+      --username "${OCIR_USERNAME}" \
+      --password "${OCIR_TOKEN}" 2>&1; then
+    break
+  fi
+  if [[ "${attempt}" -eq 3 ]]; then
+    echo "ERROR: OCIR login failed after 3 attempts."
+    exit 1
+  fi
+  delay=$(( 10 * (2 ** (attempt - 1)) ))
+  echo "NOTE: Login attempt ${attempt} failed — retrying in ${delay}s..."
+  sleep "${delay}"
+done
 
 echo "NOTE: Pushing image to OCIR..."
 docker push "${IMAGE_PATH}"
