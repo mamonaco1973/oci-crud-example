@@ -43,8 +43,11 @@ fi
 
 NAMESPACE=$(oci os ns get --query 'data' --raw-output)
 
-# OCIR username: namespace/user-ocid (works for local and federated users).
-OCIR_USERNAME="${NAMESPACE}/${USER_OCID}"
+# OCIR username: namespace/username-string (not OCID).
+# For federated users this returns "oracleidentitycloudservice/email@domain.com"
+# which OCIR requires; for local users it returns the plain username.
+USER_NAME=$(oci iam user get --user-id "${USER_OCID}" --query 'data.name' --raw-output)
+OCIR_USERNAME="${NAMESPACE}/${USER_NAME}"
 OCIR_HOST="${REGION}.ocir.io"
 
 echo "NOTE: Region      - ${REGION}"
