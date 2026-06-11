@@ -150,6 +150,12 @@ cd ..
 # ------------------------------------------------------------------------------
 # Post-deployment validation
 # ------------------------------------------------------------------------------
+# OCI Functions pull the container image from OCIR on first invocation.
+# Wait briefly to allow the cold start to complete before hitting the API.
+# ------------------------------------------------------------------------------
+
+echo "NOTE: Waiting 60s for function cold start readiness..."
+sleep 60
 
 echo "NOTE: Running post-deployment validation..."
 ./validate.sh
