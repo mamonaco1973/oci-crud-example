@@ -37,9 +37,10 @@ echo "NOTE: Building Docker image (tag=${IMAGE_TAG})..."
 docker build -t "${IMAGE_PATH}" "${CODE_DIR}"
 
 echo "NOTE: Logging in to OCIR at ${OCIR_HOST}..."
-echo "${OCIR_TOKEN}" | docker login "${OCIR_HOST}" \
+# --password-stdin is unreliable in non-interactive pipe contexts on some hosts.
+docker login "${OCIR_HOST}" \
   --username "${OCIR_USERNAME}" \
-  --password-stdin
+  --password "${OCIR_TOKEN}"
 
 echo "NOTE: Pushing image to OCIR..."
 docker push "${IMAGE_PATH}"
