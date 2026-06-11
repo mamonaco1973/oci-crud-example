@@ -41,8 +41,8 @@ export TF_VAR_region="$REGION"
 echo "NOTE: [Phase 4/4] Destroying web application..."
 
 cd 04-webapp || { echo "ERROR: 04-webapp directory missing."; exit 1; }
-#terraform init
-#terraform destroy -auto-approve
+terraform init
+terraform destroy -auto-approve
 cd ..
 
 # ------------------------------------------------------------------------------
@@ -53,7 +53,9 @@ echo "NOTE: [Phase 3/4] Destroying Functions, NoSQL, and API Gateway..."
 
 cd 03-functions || { echo "ERROR: 03-functions directory missing."; exit 1; }
 terraform init
-terraform destroy -auto-approve
+# Retry once — OCI IAM ETag optimistic locking causes spurious 412 failures
+# on policy deletes when OCI modifies the resource between read and delete.
+terraform destroy -auto-approve || terraform destroy -auto-approve
 cd ..
 
 # ------------------------------------------------------------------------------
