@@ -39,8 +39,13 @@ import os
 import uuid
 from datetime import datetime, timezone
 
-import oci
+# Import only the specific SDK pieces we use rather than the whole `oci`
+# package — trims cold-start import time on OCI Functions.
 from fdk import response
+from oci.auth.signers import get_resource_principals_signer
+from oci.exceptions import ServiceError
+from oci.nosql import NosqlClient
+from oci.nosql.models import QueryDetails, UpdateRowDetails
 
 # ---------------------------------------------------------------------------
 # Module-level singletons
@@ -54,8 +59,8 @@ COMPARTMENT_ID = os.environ.get("COMPARTMENT_ID", "").strip()
 # Resource Principal signer provides credentials inside OCI Functions
 # without any key files or secrets.  Initialised once per container so
 # the auth token is reused across warm invocations.
-_signer = oci.auth.signers.get_resource_principals_signer()
-_nosql  = oci.nosql.NosqlClient(config={}, signer=_signer)
+_signer = get_resource_principals_signer()
+_nosql  = NosqlClient(config={}, signer=_signer)
 
 
 # ---------------------------------------------------------------------------
@@ -194,13 +199,13 @@ def create_handler(ctx, data: io.BytesIO = None):
     try:
         _nosql.update_row(
             table_name_or_id=TABLE_NAME,
-            update_row_details=oci.nosql.models.UpdateRowDetails(
+            update_row_details=UpdateRowDetails(
                 value=item,
                 compartment_id=COMPARTMENT_ID,
                 option="IF_ABSENT",
             ),
         )
-    except oci.exceptions.ServiceError:
+    except ServiceError:
         return _resp(ctx, 500, {"error": "Failed to create note"})
 
     return _resp(ctx, 201, {"id": note_id, "title": title, "note": note})
@@ -222,7 +227,7 @@ def list_handler(ctx, data: io.BytesIO = None):
     """
     try:
         resp = _nosql.query(
-            query_details=oci.nosql.models.QueryDetails(
+            query_details=QueryDetails(
                 statement=(
                     f"SELECT * FROM {TABLE_NAME} WHERE owner = 'global'"
                 ),
@@ -230,7 +235,7 @@ def list_handler(ctx, data: io.BytesIO = None):
             ),
         )
         items = [_row(r) for r in (resp.data.items or [])]
-    except oci.exceptions.ServiceError:
+    except ServiceError:
         return _resp(ctx, 500, {"error": "Failed to list notes"})
 
     return _resp(ctx, 200, {"items": items})
@@ -259,7 +264,7 @@ def get_handler(ctx, data: io.BytesIO = None):
             key=[f"owner:{OWNER}", f"id:{note_id}"],
             compartment_id=COMPARTMENT_ID,
         )
-    except oci.exceptions.ServiceError:
+    except ServiceError:
         return _resp(ctx, 500, {"error": "Failed to retrieve note"})
 
     # get_row returns data.value = None when the key does not exist.
@@ -307,7 +312,7 @@ def update_handler(ctx, data: io.BytesIO = None):
             key=[f"owner:{OWNER}", f"id:{note_id}"],
             compartment_id=COMPARTMENT_ID,
         )
-    except oci.exceptions.ServiceError:
+    except ServiceError:
         return _resp(ctx, 500, {"error": "Failed to retrieve note"})
 
     existing = _row(existing_resp.data.value)
@@ -327,13 +332,13 @@ def update_handler(ctx, data: io.BytesIO = None):
     try:
         _nosql.update_row(
             table_name_or_id=TABLE_NAME,
-            update_row_details=oci.nosql.models.UpdateRowDetails(
+            update_row_details=UpdateRowDetails(
                 value=item,
                 compartment_id=COMPARTMENT_ID,
                 option="IF_PRESENT",
             ),
         )
-    except oci.exceptions.ServiceError:
+    except ServiceError:
         return _resp(ctx, 500, {"error": "Failed to update note"})
 
     return _resp(ctx, 200, item)
@@ -363,7 +368,7 @@ def delete_handler(ctx, data: io.BytesIO = None):
             key=[f"owner:{OWNER}", f"id:{note_id}"],
             compartment_id=COMPARTMENT_ID,
         )
-    except oci.exceptions.ServiceError:
+    except ServiceError:
         return _resp(ctx, 500, {"error": "Failed to retrieve note"})
 
     if not _row(existing_resp.data.value):
@@ -375,7 +380,7 @@ def delete_handler(ctx, data: io.BytesIO = None):
             key=[f"owner:{OWNER}", f"id:{note_id}"],
             compartment_id=COMPARTMENT_ID,
         )
-    except oci.exceptions.ServiceError:
+    except ServiceError:
         return _resp(ctx, 500, {"error": "Failed to delete note"})
 
     return _resp(ctx, 200, {"message": "Note deleted"})
