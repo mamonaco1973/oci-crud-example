@@ -156,7 +156,7 @@ def create_handler(ctx, data: io.BytesIO = None):
     """Create a new note and persist it to OCI NoSQL.
 
     Reads title and note from the JSON request body, generates a UUID4 as
-    the sort key, and writes the item using put_row with the IF_ABSENT
+    the sort key, and writes the item using update_row with the IF_ABSENT
     option.  IF_ABSENT guards against key collisions — redundant given
     UUID4 uniqueness but defensive.
 
@@ -192,9 +192,9 @@ def create_handler(ctx, data: io.BytesIO = None):
     }
 
     try:
-        _nosql.put_row(
+        _nosql.update_row(
             table_name_or_id=TABLE_NAME,
-            put_row_details=oci.nosql.models.UpdateRowDetails(
+            update_row_details=oci.nosql.models.UpdateRowDetails(
                 value=item,
                 compartment_id=COMPARTMENT_ID,
                 option="IF_ABSENT",
@@ -274,7 +274,7 @@ def update_handler(ctx, data: io.BytesIO = None):
     """Update the title and body of an existing note.
 
     Reads the existing row to confirm it exists and to preserve created_at,
-    then overwrites with updated fields using put_row with IF_PRESENT so
+    then overwrites with updated fields using update_row with IF_PRESENT so
     the write is rejected if the item was concurrently deleted.
 
     Args:
@@ -325,9 +325,9 @@ def update_handler(ctx, data: io.BytesIO = None):
     }
 
     try:
-        _nosql.put_row(
+        _nosql.update_row(
             table_name_or_id=TABLE_NAME,
-            put_row_details=oci.nosql.models.UpdateRowDetails(
+            update_row_details=oci.nosql.models.UpdateRowDetails(
                 value=item,
                 compartment_id=COMPARTMENT_ID,
                 option="IF_PRESENT",
