@@ -1,4 +1,4 @@
-# OCI Serverless CRUD API with Functions, NoSQL, and API Gateway
+# OCI Serverless CRUD API
 
 This project delivers a fully automated **serverless CRUD (Create, Read, Update,
 Delete) API** on OCI, built using **OCI API Gateway**, **OCI Functions**, and
@@ -17,50 +17,57 @@ and delete notes from a browser.
 ![webapp](webapp.png)
 
 This design follows a **serverless microservice architecture** where API Gateway
-routes requests to dedicated Lambda functions, DynamoDB provides fully managed
-persistence, and AWS handles scaling, availability, and fault tolerance
+routes requests to dedicated OCI Functions, OCI NoSQL Database provides fully
+managed persistence, and OCI handles scaling, availability, and fault tolerance
 automatically.
 
-![diagram](aws-crud-example.png)
+![diagram](oci-crud-example.png)
 
 Key capabilities demonstrated:
 
-1. **Serverless CRUD API** – Implements REST-style endpoints backed by Lambda
-   functions for creating, retrieving, listing, updating, and deleting records.
-2. **Stateless Compute Layer** – Each Lambda function is independent and
-   stateless, enabling horizontal scaling and zero idle cost.
-3. **Managed NoSQL Storage** – Uses DynamoDB with on-demand capacity for
-   low-latency, fully managed data persistence.
-4. **Infrastructure as Code (IaC)** – Terraform provisions API Gateway routes,
-   Lambda functions, IAM roles, DynamoDB tables, and supporting resources in a
+1. **Serverless CRUD API** – Implements REST-style endpoints backed by OCI
+   Functions for creating, retrieving, listing, updating, and deleting records.
+2. **Stateless Compute Layer** – Each Function is independent and stateless,
+   enabling horizontal scaling and zero idle cost.
+3. **Managed NoSQL Storage** – Uses OCI NoSQL Database with on-demand capacity
+   for low-latency, fully managed data persistence.
+4. **Container-Based Functions** – OCI Functions run *containers*, not raw code:
+   one Docker image is built, pushed to **OCIR** (OCI's container registry), and
+   pulled by all five Functions at invoke time.
+5. **Infrastructure as Code (IaC)** – Terraform provisions API Gateway routes,
+   Functions, IAM policies, the NoSQL table, and supporting resources in a
    repeatable, auditable way.
-5. **Browser-Based Test Client** – A simple static HTML frontend demonstrates
+6. **Browser-Based Test Client** – A simple static HTML frontend demonstrates
    real-time interaction with the API without requiring additional tooling.
 
 Together, these components form a **clean, minimal reference architecture** for
-building serverless APIs on AWS — suitable for learning, prototyping, or extending
-into more advanced event-driven and authenticated microservices.
+building serverless APIs on OCI — suitable for learning, prototyping, or
+extending into more advanced event-driven and authenticated microservices.
 
 ## API Gateway Endpoints
 
-The **Notes API** exposes REST-style CRUD endpoints through **Amazon API Gateway
-(HTTP API)**. These endpoints allow clients to create, list, retrieve, update,
-and delete notes stored in DynamoDB. All endpoints return JSON and work with
-both CLI and browser-based clients.
+The **Notes API** exposes REST-style CRUD endpoints through **OCI API Gateway**.
+These endpoints allow clients to create, list, retrieve, update, and delete
+notes stored in OCI NoSQL Database. All endpoints return JSON and work with both
+CLI and browser-based clients.
 
 > Note: In this simplified demo, the note `owner` is hardcoded to `"global"` in
-> the Lambda handlers.
+> the Function handlers.
 
 ### API Endpoint Summary
 
-| Method | Path | Purpose | Input | DynamoDB Operation |
+| Method | Path | Purpose | Input | NoSQL Operation |
 |------|------|--------|------|--------------------|
-| POST | `/notes` | Create a new note | JSON body (`title`, `note`) | `PutItem` |
-| GET | `/notes` | List all notes | None | `Query` (owner = "global") |
-| GET | `/notes/{id}` | Retrieve a single note by ID | Path param (`id`) | `GetItem` |
-| PUT | `/notes/{id}` | Update an existing note | Path param + JSON body | `UpdateItem` |
-| DELETE | `/notes/{id}` | Delete a note by ID | Path param (`id`) | `DeleteItem` |
+| POST | `/notes` | Create a new note | JSON body (`title`, `note`) | `update_row` (IF_ABSENT) |
+| GET | `/notes` | List all notes | None | `query` (owner = "global") |
+| GET | `/notes/{id}` | Retrieve a single note by ID | Path param (`id`) | `get_row` |
+| PUT | `/notes/{id}` | Update an existing note | Path param + JSON body | `update_row` (IF_PRESENT) |
+| DELETE | `/notes/{id}` | Delete a note by ID | Path param (`id`) | `delete_row` |
 
+> **OCI path-parameter quirk:** API Gateway does not pass `{id}` to the Function
+> body. A header-transformation policy injects `${request.path[id]}` as the
+> `X-Note-Id` request header, which the handler reads via
+> `ctx.Headers().get("x-note-id")`.
 
 ### Request & Response Characteristics
 
@@ -77,8 +84,8 @@ both CLI and browser-based clients.
 
 ### POST /notes
 
-**Purpose:**  
-Creates a new note in DynamoDB.
+**Purpose:**
+Creates a new note in OCI NoSQL Database.
 
 **Request Body (JSON):**
 ```json
@@ -97,7 +104,7 @@ Creates a new note in DynamoDB.
 
 **Example Request:**
 ```bash
-curl -s -X POST https://<api-id>.execute-api.us-east-1.amazonaws.com/notes \
+curl -s -X POST https://<gateway-id>.apigateway.us-ashburn-1.oci.customer-oci.com/notes \
   -H "Content-Type: application/json" \
   -d '{"title":"Test Note 1","note":"This is test note 1"}'
 ```
@@ -115,12 +122,12 @@ curl -s -X POST https://<api-id>.execute-api.us-east-1.amazonaws.com/notes \
 
 ### GET /notes
 
-**Purpose:**  
+**Purpose:**
 Lists all notes for the demo owner (`"global"`).
 
 **Example Request:**
 ```bash
-curl -s https://<api-id>.execute-api.us-east-1.amazonaws.com/notes
+curl -s https://<gateway-id>.apigateway.us-ashburn-1.oci.customer-oci.com/notes
 ```
 
 **Example Response (200):**
@@ -143,19 +150,19 @@ curl -s https://<api-id>.execute-api.us-east-1.amazonaws.com/notes
 
 ### GET /notes/{id}
 
-**Purpose:**  
+**Purpose:**
 Retrieves a single note by ID.
 
 **Example Request:**
 ```bash
-curl -s https://<api-id>.execute-api.us-east-1.amazonaws.com/notes/<id>
+curl -s https://<gateway-id>.apigateway.us-ashburn-1.oci.customer-oci.com/notes/<id>
 ```
 
 ---
 
 ### PUT /notes/{id}
 
-**Purpose:**  
+**Purpose:**
 Updates an existing note.
 
 **Request Body (JSON):**
@@ -170,28 +177,27 @@ Updates an existing note.
 
 ### DELETE /notes/{id}
 
-**Purpose:**  
+**Purpose:**
 Deletes a note by ID.
 
 **Example Request:**
 ```bash
-curl -s -X DELETE https://<api-id>.execute-api.us-east-1.amazonaws.com/notes/<id>
+curl -s -X DELETE https://<gateway-id>.apigateway.us-ashburn-1.oci.customer-oci.com/notes/<id>
 ```
 
 ## Prerequisites
 
-* [An AWS Account](https://aws.amazon.com/console/)
-* [Install AWS CLI](https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html)
+* [An OCI (Oracle Cloud) Account](https://www.oracle.com/cloud/free/)
+* [Install and configure the OCI CLI](https://docs.oracle.com/en-us/iaas/Content/API/SDKDocs/cliconfigure.htm)
 * [Install Terraform](https://developer.hashicorp.com/terraform/install)
-
-If this is your first time following along, we recommend starting with this video:  
-**[AWS + Terraform: Easy Setup](https://www.youtube.com/watch?v=9clW3VQLyxA)** – it walks through configuring your AWS credentials, Terraform backend, and CLI environment.
+* [Install Docker](https://docs.docker.com/get-docker/) — required to build and push the Functions image to OCIR
+* `jq` and `envsubst` — used by the automation scripts
 
 ## Download this Repository
 
 ```bash
-git clone https://github.com/mamonaco1973/aws-crud-example.git
-cd aws-crud-example
+git clone https://github.com/mamonaco1973/oci-crud-example.git
+cd oci-crud-example
 ```
 
 ## Build the Code
@@ -199,59 +205,76 @@ cd aws-crud-example
 Run [check_env](check_env.sh) to validate your environment, then run [apply](apply.sh) to provision the infrastructure.
 
 ```bash
-~/aws-crud-example$ ./apply.sh
+~/oci-crud-example$ ./apply.sh
 NOTE: Running environment validation...
 NOTE: Validating that required commands are found in your PATH.
-NOTE: aws is found in the current PATH.
+NOTE: oci is found in the current PATH.
 NOTE: terraform is found in the current PATH.
+NOTE: docker is found in the current PATH.
 NOTE: jq is found in the current PATH.
+NOTE: envsubst is found in the current PATH.
 NOTE: All required commands are available.
-NOTE: Checking AWS cli connection.
-NOTE: Successfully logged into AWS.
+NOTE: Checking OCI CLI connection.
+NOTE: Successfully connected to OCI.
 
 Initializing the backend...
 ```
+
+`apply.sh` runs in phases: it provisions the OCIR repository, **builds and pushes
+the Docker image** (`02-docker/build.sh`), then applies the Functions + API
+Gateway + NoSQL layer, and finally uploads the web frontend to Object Storage.
 
 ### Build Results
 
 When the deployment completes, the following resources are created:
 
-- **Core Infrastructure:**  
-  - Fully serverless architecture—no EC2 instances, containers, or VPC networking required  
-  - Terraform-managed provisioning of API Gateway, Lambda, DynamoDB, and S3 resources  
-  - Stateless, request-driven design where each API call is handled independently  
+- **Core Infrastructure:**
+  - Serverless compute—no VM instances to manage
+  - A minimal VCN (subnet + gateway) so Functions have egress to OCIR and NoSQL
+  - Terraform-managed provisioning of API Gateway, Functions, NoSQL, OCIR, and
+    Object Storage resources
+  - Stateless, request-driven design where each API call is handled independently
 
-- **Security & IAM:**  
-  - IAM roles for Lambda execution with scoped permissions for DynamoDB and CloudWatch  
-  - Principle-of-least-privilege policies applied per Lambda function  
-  - No long-lived credentials embedded in application code  
+- **Security & IAM:**
+  - A Dynamic Group + IAM policies grant the Functions row access to NoSQL and
+    let API Gateway invoke the Functions
+  - Functions authenticate with a **Resource Principal**—no keys or secrets in
+    application code
+  - Principle-of-least-privilege policies scoped to the compartment
 
-- **Amazon DynamoDB Table:**  
-  - Single table storing notes keyed by `owner` (partition key) and `id` (sort key)  
-  - Each item stores `title`, `note`, `created_at`, and `updated_at` attributes  
-  - On-demand capacity mode for automatic scaling and cost efficiency  
+- **OCI NoSQL Database:**
+  - Single table storing notes keyed by `owner` (shard key) and `id` (sort key)
+  - Each row stores `title`, `note`, `created_at`, and `updated_at` attributes
+  - On-demand capacity for automatic scaling and cost efficiency
 
-- **AWS Lambda Functions:**  
-  - Multiple Python-based Lambda functions implementing Create, Read, Update, List, and Delete operations  
-  - Each function is independently deployed and mapped to a specific API route  
-  - Emits structured logs to CloudWatch for observability and debugging  
+- **OCI Functions (container-based):**
+  - Five Python Functions implementing Create, Read, Update, List, and Delete
+  - **One Docker image** in OCIR serves all five; the `FUNCTION_TYPE` environment
+    variable dispatches each Function to the right handler
+  - Each Function is mapped to a specific API route and emits logs to OCI Logging
 
-- **Amazon API Gateway:**  
-  - HTTP API exposing REST-style `/notes` and `/notes/{id}` endpoints  
-  - Routes requests to the appropriate Lambda function based on HTTP method and path  
-  - Provides secure, stateless HTTPS access for browser and CLI clients  
+- **OCIR (Container Registry):**
+  - Holds the notes-functions image; a content-hash tag forces a Function update
+    whenever the code changes
+  - The Functions pull the image on invoke—the OCI-specific "no code upload" step
 
-- **Static Web Application (S3):**  
-  - S3 bucket configured for static website hosting  
-  - `index.html` provides a lightweight browser-based interface for managing notes  
-  - Frontend dynamically calls the deployed API Gateway endpoints  
+- **OCI API Gateway:**
+  - Exposes REST-style `/notes` and `/notes/{id}` endpoints
+  - Routes requests to the appropriate Function based on HTTP method and path
+  - Injects `{id}` as the `X-Note-Id` header for path-parameter routes
 
-- **Automation & Validation:**  
-  - `apply.sh`, `destroy.sh`, and `check_env.sh` scripts automate provisioning, teardown, and environment validation  
-  - `validate.sh` performs end-to-end API verification using curl and jq  
-  - Entire workflow runs using Terraform and AWS CLI—no manual AWS console setup required  
+- **Static Web Application (Object Storage):**
+  - Public bucket configured for static website hosting
+  - `index.html` provides a lightweight browser-based interface for managing notes
+  - Frontend dynamically calls the deployed API Gateway endpoints
+
+- **Automation & Validation:**
+  - `apply.sh`, `destroy.sh`, and `check_env.sh` scripts automate provisioning,
+    teardown, and environment validation
+  - `validate.sh` performs end-to-end API verification using curl and jq
+  - Entire workflow runs using Terraform and the OCI CLI—no manual OCI console
+    setup required
 
 Together, these resources form a **clean, minimal serverless CRUD application**
-that demonstrates modern AWS API design principles—simple, scalable, and fully
+that demonstrates modern OCI API design principles—simple, scalable, and fully
 managed from infrastructure to application code.
-
