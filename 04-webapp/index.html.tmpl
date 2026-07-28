@@ -225,9 +225,18 @@
   <div class="busy-box">Working…</div>
 </div>
 
+<!-- Background cold-start probe readout (bottom-right, unobtrusive) -->
+<div id="probe" style="position:fixed; bottom:8px; right:10px; font-size:11px;
+     color:#64748b; font-family:ui-monospace,Menlo,Consolas,monospace;
+     z-index:500;"></div>
+
 <script>
   // ===================== Config =====================
   const API_BASE_URL = "${API_BASE}";
+
+  // Background probe cadence — GET /notes once a minute to keep a Function
+  // warm and measure whether that interval is enough to dodge cold starts.
+  const PROBE_INTERVAL_MS = 60000;
 
   // ===================== State ======================
   let notes = [];
@@ -439,8 +448,36 @@
   document.getElementById("btnModalCancel").addEventListener("click", closeModal);
   document.getElementById("btnModalCreate").addEventListener("click", createFromModal);
 
+  // ===================== Cold-start probe ===========
+  // Once a minute, quietly time a GET /notes round-trip. Runs silently — no
+  // busy overlay, no re-render — so it never disturbs the demo. Each result is
+  // logged and stashed on window.__probes for later inspection/export.
+  const elProbe = document.getElementById("probe");
+  window.__probes = [];
+  let probeCount = 0;
+
+  async function probeNotes() {
+    const started = performance.now();
+    const stamp   = new Date().toLocaleTimeString();
+    try {
+      // Drain the body so the timing is a true end-to-end round-trip.
+      const res = await fetch(API_BASE_URL + "/notes", { cache: "no-store" });
+      await res.text();
+      const ms  = Math.round(performance.now() - started);
+      probeCount++;
+      window.__probes.push({ n: probeCount, at: stamp, ms, status: res.status });
+      console.log(`probe #${probeCount} ${stamp}  GET /notes  ${res.status}  ${ms} ms`);
+      if (elProbe) elProbe.textContent = `probe #${probeCount} · ${ms} ms · ${stamp}`;
+    } catch (e) {
+      const ms = Math.round(performance.now() - started);
+      console.log(`probe #${probeCount + 1} ${stamp}  GET /notes  FAILED  ${ms} ms  ${e.message}`);
+      if (elProbe) elProbe.textContent = `probe · error · ${stamp}`;
+    }
+  }
+
   // ===================== Init =======================
   loadNotes();
+  setInterval(probeNotes, PROBE_INTERVAL_MS);
 </script>
 
 </body>
